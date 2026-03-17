@@ -1,42 +1,45 @@
 # ftClient.py
 import socket, sys, re, os
-from Framer import Framer
+from Framer import Framer, Deframer
 
-host = '127.0.0.1'
-port = 50000
-
-def sendFile(filename):
-    # Send a file to the server
+def sendFile(filename, host, port):
     try:
-        # Check if the target file exists
         if not os.path.isfile(filename):
             print(f"ERROR: File '{filename}' not found")
             return False
-        # Create socket and connect
+        
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((host, port))
-        print(f"Connected to {host}:{port}")
+        sock_file = sock.makefile('wb', buffering=0)
+        framer = Framer(sock_file)
 
-        # Send the file's name first
-        filename_framed = Framer.frame(filename)
-        sock.sendall(filename_framed)
+        # 1. Send Filename
+        framer.frame(os.path.basename(filename))
 
-        # Send file content
+        # 2. Send File Content in Chunks
         with open(filename, 'rb') as f:
-            file_data = f.read()
+            while True:
+                chunk = f.read(16384) # 16KB chunks
+                if not chunk:
+                    break
+                framer.frame(chunk)
         
-        file_framed = Framer.frame(file_data)
-        sock.sendall(file_framed)
+        # 3. Send an empty frame to signal EOF (End of File)
+        framer.frame(b'') 
+
         print(f"File '{filename}' sent successfully")
+        sock_file.close()
         sock.close()
         return True
     except Exception as e:
-        print (f"Error sending file: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"Error: {e}")
         return False
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print ("Usage: python ftClient.py <filename>")
+        print("Usage: python ftClient.py <filename> <host> [port]")
         sys.exit(1)
-    sendFile(sys.argv[1])
+    filename = sys.argv[1]
+    host = sys.argv[2]
+    port = int(sys.argv[3]) if len(sys.argv) > 3 else 50000
+    
+    sendFile(filename, host, port)
