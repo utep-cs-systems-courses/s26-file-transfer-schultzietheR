@@ -17,52 +17,40 @@ class Framer:
         return framed_data
     
 class Deframer:
-    
     def __init__(self, file_des):
-        # Constructor for the deframer
         self.file_des = file_des
-    #@staticmethod
+
     def deframe(self, buffer_size=4096, decode=False):
-        
-        # Read a framed message from a file descriptor.
-        
         try:
-            # Try to read 8 bytes (largest possible header)
-            header = self.file_des.read(8)
-            if not header:
-                return None
-            header_size = len(header)
-            # Unpack based on actual header size received
-            if header_size == 1:
-                length = struct.unpack('!B', header)[0]
-            elif header_size == 2:
-                length = struct.unpack('!H', header)[0]
-            elif header_size == 4:
-                length = struct.unpack('!I', header)[0]
-            elif header_size == 8:
-                length = struct.unpack('!Q', header)[0]
-            else:
-                raise ValueError(f"Invalid header size: {header_size}") 
+            # 1. Read the 4-byte header
+            header = self._read_exactly(4)
+            if not header: 
+                return None # Normal EOF
             
-            # Validate frame length
-            if length > 1024 * 1024 * 100:  # 100MB max
-                raise ValueError(f"Frame size too large: {length} bytes")
+            length = struct.unpack('!I', header)[0]
             
-            # Read exactly 'length' bytes of data
-            data = b''
-            while len(data) < length:
-                chunk = self.file_des.read(min(buffer_size, length - len(data)))
-                if not chunk:
-                    raise EOFError("File closed unexpectedly")
-                data += chunk
+            # 2. Handle 0-length "keep-alive" or "EOF" markers
+            if length == 0:
+                return "" if decode else b""
+
+            # 3. Read exactly 'length' bytes
+            data = self._read_exactly(length)
+            if data is None:
+                raise EOFError("Connection closed before full frame received")
             
-            # Return decoded or raw based on parameter
             return data.decode() if decode else data
-        
-        except struct.error as e:
-            print(f"Frame header error: {e}")
-            return None
+
         except Exception as e:
             print(f"Deframing error: {e}")
             return None
+
+    def _read_exactly(self, n):
+        """Helper to ensure we get exactly n bytes."""
+        result = b''
+        while len(result) < n:
+            chunk = self.file_des.read(n - len(result))
+            if not chunk: # Socket closed
+                return None if not result else result # Return what we have or None
+            result += chunk
+        return result
          
