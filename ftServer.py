@@ -56,4 +56,15 @@ def startServer(max_clients=5):
     finally:
         sock.close()
 if __name__ == '__main__':
+    # Default values
+    listen_port = port 
+    
+    # Simple argument check for -p <port>
+    if len(sys.argv) > 2 and sys.argv[1] == '-p':
+        try:
+            listen_port = int(sys.argv[2])
+            port = listen_port # Update the global port variable
+        except ValueError:
+            print("Invalid port number. Using default 50000.")
+
     startServer()
